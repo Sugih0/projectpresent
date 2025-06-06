@@ -1008,7 +1008,7 @@ def main():
             st.dataframe(batch_df.head(20), use_container_width=True, hide_index=True)
     
     elif page == "📋 Performance Analytics":
-        st.markdown('<div class="section-header"><h2>Comprehensive Performance Analytics</h2></div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header"><h2>Evaluation Metrics</h2></div>', unsafe_allow_html=True)
         
         if 'results' not in st.session_state:
             st.warning(" Please train models first in the Model Development section.")
