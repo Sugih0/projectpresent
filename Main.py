@@ -920,7 +920,7 @@ def main():
             """, unsafe_allow_html=True)
     
     elif page == "📈 Predictions & Results":
-        st.markdown('<div class="section-header"><h2>Model Predictions & Clinical Assessment</h2></div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header"><h2>Result</h2></div>', unsafe_allow_html=True)
         
         if 'models' not in st.session_state:
             st.warning("Please train models first in the Model Development section.")
