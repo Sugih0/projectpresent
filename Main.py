@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 import time
 import warnings
 warnings.filterwarnings('ignore')
@@ -34,14 +32,6 @@ st.markdown("""
         border-radius: 10px;
         margin: 1rem 0;
         text-align: center;
-    }
-    
-    .metric-card {
-        background: white;
-        padding: 1rem;
-        border-radius: 10px;
-        border-left: 5px solid #667eea;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
     .info-box {
@@ -335,47 +325,30 @@ def calculate_metrics(y_true, y_pred):
         'confusion_matrix': np.array([[tn, fp], [fn, tp]])
     }
 
-def create_risk_gauge(probability):
-    """Create a simple risk gauge visualization"""
-    fig, ax = plt.subplots(figsize=(6, 4))
+def create_risk_display(probability):
+    """Create a text-based risk display"""
+    # Create a simple progress bar using text
+    bar_length = 20
+    filled_length = int(bar_length * probability)
+    bar = '█' * filled_length + '░' * (bar_length - filled_length)
     
-    # Create gauge
-    colors = ['#00b894', '#fdcb6e', '#e17055', '#d63031']
-    wedges = [25, 25, 25, 25]
+    if probability < 0.3:
+        risk_level = "Low Risk 🟢"
+        color_class = "success-box"
+    elif probability < 0.7:
+        risk_level = "Moderate Risk 🟡"
+        color_class = "warning-box"
+    else:
+        risk_level = "High Risk 🔴"
+        color_class = "warning-box"
     
-    wedge_colors = colors
-    
-    # Create the gauge
-    wedge_props = dict(width=0.3, edgecolor='white')
-    wp = ax.pie(wedges, colors=wedge_colors, wedgeprops=wedge_props, 
-                startangle=180, counterclock=False)
-    
-    # Add needle
-    angle = 180 - (probability * 180)  # Convert probability to angle
-    needle_x = 0.7 * np.cos(np.radians(angle))
-    needle_y = 0.7 * np.sin(np.radians(angle))
-    ax.arrow(0, 0, needle_x, needle_y, head_width=0.05, head_length=0.05, 
-             fc='black', ec='black', linewidth=2)
-    
-    # Add center circle
-    centre_circle = plt.Circle((0, 0), 0.4, fc='white', ec='black')
-    ax.add_artist(centre_circle)
-    
-    # Add labels
-    ax.text(0, -0.2, f'{probability:.1%}', ha='center', va='center', 
-            fontsize=16, fontweight='bold')
-    ax.text(0, -0.35, 'Risk Level', ha='center', va='center', fontsize=12)
-    
-    # Add risk level labels
-    ax.text(-0.8, 0.1, 'Low', ha='center', va='center', fontsize=10, color='#00b894')
-    ax.text(0.8, 0.1, 'High', ha='center', va='center', fontsize=10, color='#d63031')
-    
-    ax.set_xlim(-1.2, 1.2)
-    ax.set_ylim(-0.6, 1.2)
-    ax.set_aspect('equal')
-    ax.axis('off')
-    
-    return fig
+    return f"""
+    <div class="{color_class}">
+    <h3 style="text-align: center;">{risk_level}</h3>
+    <p style="text-align: center; font-family: monospace; font-size: 18px;">{bar}</p>
+    <p style="text-align: center; font-size: 24px; font-weight: bold;">{probability:.1%}</p>
+    </div>
+    """
 
 def main():
     # Header
@@ -443,15 +416,14 @@ def main():
             """, unsafe_allow_html=True)
         
         with col2:
-            # Diabetes statistics
-            fig, ax = plt.subplots(figsize=(8, 6))
-            labels = ['No Diabetes', 'Diabetes']
-            sizes = [len(df[df['Outcome']==0]), len(df[df['Outcome']==1])]
-            colors = ['#2ecc71', '#e74c3c']
-            
-            ax.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
-            ax.set_title('Dataset Distribution')
-            st.pyplot(fig)
+            # Dataset distribution using Streamlit chart
+            outcome_counts = df['Outcome'].value_counts()
+            chart_data = pd.DataFrame({
+                'Category': ['No Diabetes', 'Diabetes'],
+                'Count': [outcome_counts[0], outcome_counts[1]]
+            })
+            st.subheader("Dataset Distribution")
+            st.bar_chart(chart_data.set_index('Category'))
     
     # Section 2: Dataset Overview
     elif selected_section == "2. Dataset Overview":
@@ -459,7 +431,7 @@ def main():
         
         st.markdown("""
         ### Pima Indians Diabetes Dataset
-        **Source:** [Kaggle - Diabetes Dataset](https://www.kaggle.com/datasets/mathchi/diabetes-data-set/data)
+        **Source:** National Institute of Diabetes and Digestive and Kidney Diseases
         
         This dataset is originally from the National Institute of Diabetes and Digestive and Kidney Diseases.
         """)
@@ -509,66 +481,51 @@ def main():
         col1, col2 = st.columns(2)
         
         with col1:
-            fig, ax = plt.subplots(figsize=(8, 6))
             outcome_counts = df['Outcome'].value_counts()
-            labels = ['No Diabetes', 'Diabetes']
-            sizes = [outcome_counts[0], outcome_counts[1]]
-            colors = ['#2ecc71', '#e74c3c']
-            
-            ax.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
-            ax.set_title('Diabetes Distribution')
-            st.pyplot(fig)
+            chart_data = pd.DataFrame({
+                'Category': ['No Diabetes', 'Diabetes'],
+                'Count': [outcome_counts[0], outcome_counts[1]]
+            })
+            st.bar_chart(chart_data.set_index('Category'))
         
         with col2:
-            outcome_counts = df['Outcome'].value_counts()
             st.metric("Diabetes Prevalence", f"{outcome_counts[1]/len(df)*100:.1f}%")
             st.metric("Class Ratio", f"1:{outcome_counts[0]/outcome_counts[1]:.1f}")
         
         # Feature distributions
         st.subheader("📊 Feature Distributions")
         
-        numeric_cols = ['Glucose', 'BMI', 'Age', 'BloodPressure']
+        # Select feature to analyze
+        feature_to_analyze = st.selectbox("Select Feature to Analyze:", 
+                                        ['Glucose', 'BMI', 'Age', 'BloodPressure'])
         
-        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-        axes = axes.ravel()
+        col1, col2 = st.columns(2)
         
-        for i, col in enumerate(numeric_cols):
-            ax = axes[i]
-            
-            # Histogram for each outcome
-            df[df['Outcome']==0][col].hist(alpha=0.7, label='No Diabetes', 
-                                          color='#2ecc71', ax=ax, bins=20)
-            df[df['Outcome']==1][col].hist(alpha=0.7, label='Diabetes', 
-                                          color='#e74c3c', ax=ax, bins=20)
-            
-            ax.set_title(f'{col} Distribution by Diabetes Status')
-            ax.set_xlabel(col)
-            ax.set_ylabel('Frequency')
-            ax.legend()
+        with col1:
+            st.write(f"**{feature_to_analyze} - No Diabetes**")
+            no_diabetes_data = df[df['Outcome']==0][feature_to_analyze]
+            st.line_chart(no_diabetes_data.value_counts().sort_index())
         
-        plt.tight_layout()
-        st.pyplot(fig)
+        with col2:
+            st.write(f"**{feature_to_analyze} - Diabetes**")
+            diabetes_data = df[df['Outcome']==1][feature_to_analyze]
+            st.line_chart(diabetes_data.value_counts().sort_index())
         
         # Correlation analysis
         st.subheader("🔗 Correlation Analysis")
         
         correlation_matrix = df.corr()
-        
-        fig, ax = plt.subplots(figsize=(10, 8))
-        sns.heatmap(correlation_matrix, annot=True, cmap='RdBu_r', center=0, ax=ax)
-        ax.set_title('Feature Correlation Heatmap')
-        st.pyplot(fig)
+        st.dataframe(correlation_matrix, use_container_width=True)
         
         # Feature importance analysis using correlation with target
         st.subheader("⭐ Feature Correlation with Target")
         
         feature_corr = df.corr()['Outcome'].abs().sort_values(ascending=False)[1:]
-        
-        fig, ax = plt.subplots(figsize=(10, 6))
-        ax.barh(feature_corr.index, feature_corr.values)
-        ax.set_title('Feature Correlation with Diabetes Outcome')
-        ax.set_xlabel('Absolute Correlation')
-        st.pyplot(fig)
+        corr_data = pd.DataFrame({
+            'Feature': feature_corr.index,
+            'Correlation': feature_corr.values
+        })
+        st.bar_chart(corr_data.set_index('Feature'))
     
     # Section 4: Data Preprocessing
     elif selected_section == "4. Data Preprocessing":
@@ -693,6 +650,7 @@ def main():
                 # Make predictions
                 y_pred = model.predict(X_test)
                 y_pred_proba = model.predict_proba(X_test)
+                
                 # Calculate metrics
                 metrics = calculate_metrics(y_test, y_pred)
                 
@@ -723,38 +681,26 @@ def main():
             
             st.dataframe(results_df.round(4), use_container_width=True, hide_index=True)
             
-            # Model comparison visualization
-            fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+            # Model comparison visualization using Streamlit charts
+            st.subheader("📈 Model Comparison")
             
-            # Accuracy comparison
-            ax1 = axes[0]
-            accuracies = [results['metrics']['accuracy'] for results in model_results.values()]
-            colors = ['#3498db', '#e74c3c', '#2ecc71']
-            bars = ax1.bar(model_results.keys(), accuracies, color=colors)
-            ax1.set_title('Model Accuracy Comparison')
-            ax1.set_ylabel('Accuracy')
-            ax1.set_ylim(0, 1)
+            col1, col2 = st.columns(2)
             
-            # Add value labels on bars
-            for bar, acc in zip(bars, accuracies):
-                ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01, 
-                        f'{acc:.3f}', ha='center', va='bottom')
+            with col1:
+                st.write("**Accuracy Comparison**")
+                accuracy_data = pd.DataFrame({
+                    'Model': list(model_results.keys()),
+                    'Accuracy': [results['metrics']['accuracy'] for results in model_results.values()]
+                })
+                st.bar_chart(accuracy_data.set_index('Model'))
             
-            # F1-Score comparison
-            ax2 = axes[1]
-            f1_scores = [results['metrics']['f1'] for results in model_results.values()]
-            bars = ax2.bar(model_results.keys(), f1_scores, color=colors)
-            ax2.set_title('Model F1-Score Comparison')
-            ax2.set_ylabel('F1-Score')
-            ax2.set_ylim(0, 1)
-            
-            # Add value labels on bars
-            for bar, f1 in zip(bars, f1_scores):
-                ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01, 
-                        f'{f1:.3f}', ha='center', va='bottom')
-            
-            plt.tight_layout()
-            st.pyplot(fig)
+            with col2:
+                st.write("**F1-Score Comparison**")
+                f1_data = pd.DataFrame({
+                    'Model': list(model_results.keys()),
+                    'F1-Score': [results['metrics']['f1'] for results in model_results.values()]
+                })
+                st.bar_chart(f1_data.set_index('Model'))
             
             # Best model selection
             best_model_name = max(model_results.keys(), 
@@ -772,271 +718,296 @@ def main():
     elif selected_section == "6. Results & Predictions":
         st.markdown('<div class="section-header"><h2>🎯 Results & Predictions</h2></div>', unsafe_allow_html=True)
         
+        if 'model_results' not
+        # Section 6: Results & Predictions (continued from where it left off)
+    elif selected_section == "6. Results & Predictions":
+        st.markdown('<div class="section-header"><h2>🎯 Results & Predictions</h2></div>', unsafe_allow_html=True)
+        
         if 'model_results' not in st.session_state:
-            st.warning("Please train the models first in the Model Training section!")
+            st.warning("Please run the Model Training section first!")
             return
         
         model_results = st.session_state['model_results']
         data = st.session_state['processed_data']
         
-        # Model selection for predictions
-        st.subheader("🔮 Make Predictions")
+        # Best model selection
+        best_model_name = max(model_results.keys(), 
+                            key=lambda x: model_results[x]['metrics']['f1'])
+        best_model = model_results[best_model_name]['model']
         
-        selected_model = st.selectbox("Choose Model for Prediction:", list(model_results.keys()))
+        st.subheader(f"🏆 Using Best Model: {best_model_name}")
         
-        col1, col2 = st.columns([1, 1])
+        # Individual prediction interface
+        st.subheader("🔮 Make Individual Predictions")
+        
+        col1, col2 = st.columns(2)
         
         with col1:
-            st.write("**Input Patient Data:**")
-            
-            # Input fields
-            pregnancies = st.number_input("Pregnancies", min_value=0, max_value=20, value=1)
-            glucose = st.number_input("Glucose (mg/dL)", min_value=0, max_value=300, value=120)
+            pregnancies = st.number_input("Number of Pregnancies", min_value=0, max_value=20, value=1)
+            glucose = st.number_input("Glucose Level (mg/dL)", min_value=0, max_value=300, value=120)
             blood_pressure = st.number_input("Blood Pressure (mm Hg)", min_value=0, max_value=200, value=70)
             skin_thickness = st.number_input("Skin Thickness (mm)", min_value=0, max_value=100, value=20)
-            insulin = st.number_input("Insulin (mu U/ml)", min_value=0, max_value=900, value=80)
-            bmi = st.number_input("BMI (kg/m²)", min_value=10.0, max_value=70.0, value=25.0, step=0.1)
-            pedigree = st.number_input("Diabetes Pedigree Function", min_value=0.0, max_value=3.0, value=0.5, step=0.01)
-            age = st.number_input("Age (years)", min_value=18, max_value=100, value=30)
-            
-            if st.button("🔍 Predict Diabetes Risk"):
-                # Prepare input data
-                input_data = np.array([[pregnancies, glucose, blood_pressure, skin_thickness, 
-                                      insulin, bmi, pedigree, age]])
-                
-                # Scale input data
-                scaler_mean = data['scaler_mean']
-                scaler_std = data['scaler_std']
-                input_scaled = (input_data - scaler_mean) / scaler_std
-                
-                # Make prediction
-                model = model_results[selected_model]['model']
-                prediction = model.predict(input_scaled)[0]
-                probability = model.predict_proba(input_scaled)[0][1]
-                
-                st.session_state['last_prediction'] = {
-                    'prediction': prediction,
-                    'probability': probability,
-                    'input_data': input_data[0]
-                }
         
         with col2:
-            if 'last_prediction' in st.session_state:
-                pred_data = st.session_state['last_prediction']
-                probability = pred_data['probability']
-                
-                # Risk visualization
-                st.write("**Prediction Result:**")
-                
-                # Risk gauge
-                fig = create_risk_gauge(probability)
-                st.pyplot(fig)
-                
-                # Risk level determination
-                if probability < 0.3:
-                    risk_level = "Low Risk"
-                    risk_color = "success-box"
-                elif probability < 0.7:
-                    risk_level = "Moderate Risk"
-                    risk_color = "warning-box"
-                else:
-                    risk_level = "High Risk"
-                    risk_color = "warning-box"
-                
-                st.markdown(f"""
-                <div class="{risk_color}">
-                <strong>Risk Assessment: {risk_level}</strong><br>
-                Probability: {probability:.1%}<br>
-                Prediction: {'Diabetes' if pred_data['prediction'] == 1 else 'No Diabetes'}
+            insulin = st.number_input("Insulin Level (mu U/ml)", min_value=0, max_value=1000, value=80)
+            bmi = st.number_input("BMI (kg/m²)", min_value=10.0, max_value=70.0, value=25.0)
+            pedigree = st.number_input("Diabetes Pedigree Function", min_value=0.0, max_value=3.0, value=0.5, step=0.1)
+            age = st.number_input("Age (years)", min_value=18, max_value=100, value=30)
+        
+        if st.button("🎯 Predict Diabetes Risk"):
+            # Prepare input data
+            input_data = np.array([[pregnancies, glucose, blood_pressure, skin_thickness, 
+                                  insulin, bmi, pedigree, age]])
+            
+            # Scale input data
+            scaler_mean = data['scaler_mean']
+            scaler_std = data['scaler_std']
+            input_scaled = (input_data - scaler_mean) / scaler_std
+            
+            # Make prediction
+            prediction = best_model.predict(input_scaled)[0]
+            prediction_proba = best_model.predict_proba(input_scaled)[0]
+            
+            # Display results
+            diabetes_probability = prediction_proba[1]
+            
+            st.markdown(create_risk_display(diabetes_probability), unsafe_allow_html=True)
+            
+            # Additional insights
+            if diabetes_probability > 0.7:
+                st.markdown("""
+                <div class="warning-box">
+                <strong>⚠️ High Risk Detected</strong><br>
+                Recommendations:
+                <ul>
+                <li>Consult with a healthcare professional immediately</li>
+                <li>Consider diabetes screening tests</li>
+                <li>Monitor blood glucose regularly</li>
+                <li>Adopt a healthy diet and exercise routine</li>
+                </ul>
+                </div>
+                """, unsafe_allow_html=True)
+            elif diabetes_probability > 0.3:
+                st.markdown("""
+                <div class="info-box">
+                <strong>🟡 Moderate Risk</strong><br>
+                Recommendations:
+                <ul>
+                <li>Schedule regular check-ups</li>
+                <li>Maintain a healthy lifestyle</li>
+                <li>Monitor your weight and BMI</li>
+                <li>Stay physically active</li>
+                </ul>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div class="success-box">
+                <strong>✅ Low Risk</strong><br>
+                Keep up the good work! Continue maintaining:
+                <ul>
+                <li>Healthy diet</li>
+                <li>Regular exercise</li>
+                <li>Normal weight</li>
+                <li>Regular health check-ups</li>
+                </ul>
                 </div>
                 """, unsafe_allow_html=True)
         
         # Batch predictions
-        st.subheader("📊 Batch Predictions")
+        st.subheader("📊 Test Set Predictions Overview")
         
-        if st.button("Generate Sample Predictions"):
-            # Generate some sample predictions
-            sample_size = 10
-            np.random.seed(42)
-            
-            # Generate random samples
-            sample_data = []
-            for _ in range(sample_size):
-                sample = [
-                    np.random.randint(0, 10),  # pregnancies
-                    np.random.randint(70, 200),  # glucose
-                    np.random.randint(40, 120),  # blood_pressure
-                    np.random.randint(10, 50),  # skin_thickness
-                    np.random.randint(0, 300),  # insulin
-                    np.random.uniform(18, 50),  # bmi
-                    np.random.uniform(0.1, 2.0),  # pedigree
-                    np.random.randint(21, 70)  # age
-                ]
-                sample_data.append(sample)
-            
-            sample_array = np.array(sample_data)
-            
-            # Scale sample data
-            sample_scaled = (sample_array - data['scaler_mean']) / data['scaler_std']
-            
-            # Make predictions
-            model = model_results[selected_model]['model']
-            predictions = model.predict(sample_scaled)
-            probabilities = model.predict_proba(sample_scaled)[:, 1]
-            
-            # Create results dataframe
-            results_df = pd.DataFrame(sample_data, columns=data['feature_names'])
-            results_df['Predicted_Risk'] = probabilities
-            results_df['Prediction'] = ['Diabetes' if p == 1 else 'No Diabetes' for p in predictions]
-            results_df['Risk_Level'] = ['High' if p > 0.7 else 'Moderate' if p > 0.3 else 'Low' 
-                                      for p in probabilities]
-            
-            st.dataframe(results_df.round(3), use_container_width=True, hide_index=True)
+        y_test = data['y_test'].values if hasattr(data['y_test'], 'values') else data['y_test']
+        test_predictions = model_results[best_model_name]['predictions']
+        test_probabilities = model_results[best_model_name]['probabilities']
+        
+        # Create results dataframe
+        results_df = pd.DataFrame({
+            'Actual': y_test,
+            'Predicted': test_predictions,
+            'Probability': test_probabilities[:, 1],
+            'Correct': y_test == test_predictions
+        })
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Correct Predictions", f"{np.sum(results_df['Correct'])}/{len(results_df)}")
+        with col2:
+            st.metric("Accuracy", f"{np.mean(results_df['Correct']):.1%}")
+        with col3:
+            st.metric("High Risk Cases", f"{np.sum(test_probabilities[:, 1] > 0.7)}")
+        
+        # Show sample predictions
+        st.subheader("🔍 Sample Predictions")
+        
+        # Select random samples to display
+        sample_indices = np.random.choice(len(results_df), min(10, len(results_df)), replace=False)
+        sample_df = results_df.iloc[sample_indices].copy()
+        
+        # Format for display
+        display_df = sample_df.copy()
+        display_df['Probability'] = display_df['Probability'].apply(lambda x: f"{x:.1%}")
+        display_df['Status'] = display_df['Correct'].apply(lambda x: "✅ Correct" if x else "❌ Wrong")
+        display_df = display_df[['Actual', 'Predicted', 'Probability', 'Status']]
+        
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
     
     # Section 7: Evaluation Metrics
     elif selected_section == "7. Evaluation Metrics":
         st.markdown('<div class="section-header"><h2>📈 Evaluation Metrics</h2></div>', unsafe_allow_html=True)
         
         if 'model_results' not in st.session_state:
-            st.warning("Please train the models first in the Model Training section!")
+            st.warning("Please run the Model Training section first!")
             return
         
         model_results = st.session_state['model_results']
         
         # Model selection for detailed analysis
-        selected_model = st.selectbox("Select Model for Detailed Analysis:", list(model_results.keys()))
+        selected_model = st.selectbox("Select Model for Detailed Analysis:", 
+                                    list(model_results.keys()))
         
         model_data = model_results[selected_model]
         metrics = model_data['metrics']
         
-        st.subheader(f"📊 {selected_model} Performance Metrics")
+        st.subheader(f"📊 Detailed Metrics for {selected_model}")
         
-        # Metrics display
+        # Key metrics display
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("Accuracy", f"{metrics['accuracy']:.4f}")
+            st.metric("Accuracy", f"{metrics['accuracy']:.3f}")
         with col2:
-            st.metric("Precision", f"{metrics['precision']:.4f}")
+            st.metric("Precision", f"{metrics['precision']:.3f}")
         with col3:
-            st.metric("Recall", f"{metrics['recall']:.4f}")
+            st.metric("Recall", f"{metrics['recall']:.3f}")
         with col4:
-            st.metric("F1-Score", f"{metrics['f1']:.4f}")
+            st.metric("F1-Score", f"{metrics['f1']:.3f}")
         
         # Confusion Matrix
-        st.subheader("🔍 Confusion Matrix")
+        st.subheader("🎯 Confusion Matrix")
+        
+        cm = metrics['confusion_matrix']
         
         col1, col2 = st.columns([1, 1])
         
         with col1:
-            cm = metrics['confusion_matrix']
-            
-            fig, ax = plt.subplots(figsize=(8, 6))
-            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax,
-                       xticklabels=['No Diabetes', 'Diabetes'],
-                       yticklabels=['No Diabetes', 'Diabetes'])
-            ax.set_title(f'Confusion Matrix - {selected_model}')
-            ax.set_xlabel('Predicted')
-            ax.set_ylabel('Actual')
-            st.pyplot(fig)
+            # Display confusion matrix as a formatted table
+            cm_df = pd.DataFrame(cm, 
+                               columns=['Predicted: No Diabetes', 'Predicted: Diabetes'],
+                               index=['Actual: No Diabetes', 'Actual: Diabetes'])
+            st.dataframe(cm_df, use_container_width=True)
         
         with col2:
             # Confusion matrix interpretation
             tn, fp, fn, tp = cm.ravel()
             
-            st.write("**Confusion Matrix Breakdown:**")
-            st.write(f"- True Negatives (TN): {tn}")
-            st.write(f"- False Positives (FP): {fp}")
-            st.write(f"- False Negatives (FN): {fn}")
-            st.write(f"- True Positives (TP): {tp}")
+            st.markdown(f"""
+            **Matrix Interpretation:**
+            - True Negatives (TN): {tn}
+            - False Positives (FP): {fp}
+            - False Negatives (FN): {fn}
+            - True Positives (TP): {tp}
             
-            st.write("\n**Clinical Interpretation:**")
-            st.write(f"- Correctly identified healthy: {tn}")
-            st.write(f"- Incorrectly flagged as diabetic: {fp}")
-            st.write(f"- Missed diabetic cases: {fn}")
-            st.write(f"- Correctly identified diabetic: {tp}")
+            **Clinical Impact:**
+            - False Negatives: {fn} diabetes cases missed
+            - False Positives: {fp} unnecessary concerns
+            """)
         
-        # Model comparison
-        st.subheader("🏆 Model Comparison")
+        # Performance comparison across all models
+        st.subheader("🏆 Model Performance Comparison")
         
-        comparison_metrics = ['accuracy', 'precision', 'recall', 'f1']
+        comparison_df = pd.DataFrame({
+            'Model': list(model_results.keys()),
+            'Accuracy': [results['metrics']['accuracy'] for results in model_results.values()],
+            'Precision': [results['metrics']['precision'] for results in model_results.values()],
+            'Recall': [results['metrics']['recall'] for results in model_results.values()],
+            'F1-Score': [results['metrics']['f1'] for results in model_results.values()],
+            'Training Time': [f"{results['training_time']:.3f}s" for results in model_results.values()]
+        })
         
-        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-        axes = axes.ravel()
+        st.dataframe(comparison_df, use_container_width=True, hide_index=True)
         
-        for i, metric in enumerate(comparison_metrics):
-            ax = axes[i]
-            
-            models = list(model_results.keys())
-            values = [model_results[model]['metrics'][metric] for model in models]
-            colors = ['#3498db', '#e74c3c', '#2ecc71']
-            
-            bars = ax.bar(models, values, color=colors)
-            ax.set_title(f'{metric.capitalize()} Comparison')
-            ax.set_ylabel(metric.capitalize())
-            ax.set_ylim(0, 1)
-            
-            # Add value labels
-            for bar, val in zip(bars, values):
-                ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01, 
-                       f'{val:.3f}', ha='center', va='bottom')
+        # Performance analysis
+        st.subheader("🔍 Performance Analysis")
         
-        plt.tight_layout()
-        st.pyplot(fig)
+        best_accuracy = max(model_results.values(), key=lambda x: x['metrics']['accuracy'])
+        best_precision = max(model_results.values(), key=lambda x: x['metrics']['precision'])
+        best_recall = max(model_results.values(), key=lambda x: x['metrics']['recall'])
+        best_f1 = max(model_results.values(), key=lambda x: x['metrics']['f1'])
         
-        # Feature importance (for tree-based models)
-        if selected_model == 'Random Forest':
-            st.subheader("🌳 Feature Importance Analysis")
-            
-            # Simple feature importance based on correlation
-            data = st.session_state['processed_data']
-            feature_names = data['feature_names']
-            
-            # Calculate feature importance as absolute correlation with target
-            df_temp = load_diabetes_data()  # Reload original data
-            correlations = df_temp.corr()['Outcome'].abs().drop('Outcome').sort_values(ascending=False)
-            
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.barh(range(len(correlations)), correlations.values)
-            ax.set_yticks(range(len(correlations)))
-            ax.set_yticklabels(correlations.index)
-            ax.set_xlabel('Feature Importance (Correlation with Target)')
-            ax.set_title('Feature Importance Analysis')
-            st.pyplot(fig)
+        analysis_text = f"""
+        **Model Performance Summary:**
         
-        # Recommendations
-        st.subheader("🎯 Model Recommendations")
+        - **Best Accuracy**: {best_accuracy['metrics']['accuracy']:.3f} 
+        - **Best Precision**: {best_precision['metrics']['precision']:.3f} (Fewer false positives)
+        - **Best Recall**: {best_recall['metrics']['recall']:.3f} (Fewer missed diabetes cases)
+        - **Best F1-Score**: {best_f1['metrics']['f1']:.3f} (Best balance)
         
-        best_model = max(model_results.keys(), key=lambda x: model_results[x]['metrics']['f1'])
+        **Key Insights:**
+        - High precision reduces unnecessary anxiety from false positives
+        - High recall ensures fewer diabetes cases are missed
+        - F1-score provides the best overall balance for medical applications
+        """
         
-        st.markdown(f"""
+        st.markdown(analysis_text)
+        
+        # Clinical recommendations
+        st.subheader("🏥 Clinical Recommendations")
+        
+        st.markdown("""
         <div class="info-box">
-        <strong>📋 Model Performance Summary:</strong><br><br>
+        <strong>Model Deployment Considerations:</strong><br><br>
         
-        <strong>Best Overall Model:</strong> {best_model}<br>
-        <strong>Key Strengths:</strong>
+        <strong>For Screening Programs:</strong>
         <ul>
-        <li>Highest F1-Score: {model_results[best_model]['metrics']['f1']:.4f}</li>
-        <li>Balanced precision and recall</li>
-        <li>Good generalization capability</li>
+        <li>Prioritize high recall to catch all potential cases</li>
+        <li>Accept some false positives for comprehensive screening</li>
         </ul>
         
-        <strong>Clinical Considerations:</strong>
+        <strong>For Risk Assessment:</strong>
         <ul>
-        <li>High recall is important to avoid missing diabetic cases</li>
-        <li>Precision helps reduce false alarms</li>
-        <li>F1-score provides balanced performance measure</li>
+        <li>Balance precision and recall using F1-score</li>
+        <li>Consider probability thresholds based on risk tolerance</li>
         </ul>
         
-        <strong>Next Steps:</strong>
+        <strong>For Clinical Decision Support:</strong>
         <ul>
-        <li>Collect more diverse training data</li>
-        <li>Feature engineering for better predictive power</li>
-        <li>Clinical validation with medical professionals</li>
-        <li>Regular model retraining and monitoring</li>
+        <li>Use model predictions as additional information, not replacement for clinical judgment</li>
+        <li>Consider individual patient context and medical history</li>
+        <li>Regular model retraining with new data</li>
         </ul>
         </div>
         """, unsafe_allow_html=True)
+        
+        # Model limitations
+        st.subheader("⚠️ Model Limitations & Disclaimers")
+        
+        st.markdown("""
+        <div class="warning-box">
+        <strong>Important Limitations:</strong><br>
+        <ul>
+        <li>This model is for educational/demonstration purposes only</li>
+        <li>Not validated for clinical use</li>
+        <li>Based on limited historical data</li>
+        <li>May not generalize to all populations</li>
+        <li>Should not replace professional medical advice</li>
+        <li>Regular retraining needed with new data</li>
+        </ul>
+        
+        <strong>Disclaimer:</strong> Always consult healthcare professionals for medical decisions.
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Footer
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center; padding: 20px;">
+    <p>🏥 <strong>Diabetes Prediction ML Project</strong></p>
+    <p>Complete end-to-end machine learning pipeline for educational purposes</p>
+    <p><em>Always consult healthcare professionals for medical advice</em></p>
+    </div>
+    """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
