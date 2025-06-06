@@ -1,21 +1,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.naive_bayes import GaussianNB
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import AdaBoostClassifier
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_curve, auc
 import time
 import warnings
 warnings.filterwarnings('ignore')
@@ -132,6 +120,196 @@ def load_diabetes_data():
     })
     
     return data
+
+# Simple ML models using basic algorithms
+class SimpleRandomForest:
+    def __init__(self, n_estimators=10):
+        self.n_estimators = n_estimators
+        self.trees = []
+        
+    def fit(self, X, y):
+        self.trees = []
+        for _ in range(self.n_estimators):
+            # Bootstrap sampling
+            indices = np.random.choice(len(X), len(X), replace=True)
+            X_bootstrap = X[indices]
+            y_bootstrap = y.iloc[indices] if hasattr(y, 'iloc') else y[indices]
+            
+            # Simple decision tree (threshold-based)
+            tree = self._create_simple_tree(X_bootstrap, y_bootstrap)
+            self.trees.append(tree)
+    
+    def _create_simple_tree(self, X, y):
+        # Find best threshold for each feature
+        best_score = -1
+        best_feature = 0
+        best_threshold = 0
+        
+        for feature in range(X.shape[1]):
+            thresholds = np.percentile(X[:, feature], [25, 50, 75])
+            for threshold in thresholds:
+                left_mask = X[:, feature] <= threshold
+                if np.sum(left_mask) == 0 or np.sum(~left_mask) == 0:
+                    continue
+                
+                left_y = y[left_mask] if hasattr(y, '__getitem__') else y.iloc[left_mask]
+                right_y = y[~left_mask] if hasattr(y, '__getitem__') else y.iloc[~left_mask]
+                
+                # Calculate accuracy
+                left_pred = 1 if np.mean(left_y) > 0.5 else 0
+                right_pred = 1 if np.mean(right_y) > 0.5 else 0
+                
+                score = (np.sum(left_y == left_pred) + np.sum(right_y == right_pred)) / len(y)
+                
+                if score > best_score:
+                    best_score = score
+                    best_feature = feature
+                    best_threshold = threshold
+        
+        return {
+            'feature': best_feature,
+            'threshold': best_threshold,
+            'left_pred': 1 if np.mean(y[X[:, best_feature] <= best_threshold]) > 0.5 else 0,
+            'right_pred': 1 if np.mean(y[X[:, best_feature] > best_threshold]) > 0.5 else 0
+        }
+    
+    def predict(self, X):
+        predictions = []
+        for x in X:
+            votes = []
+            for tree in self.trees:
+                if x[tree['feature']] <= tree['threshold']:
+                    votes.append(tree['left_pred'])
+                else:
+                    votes.append(tree['right_pred'])
+            predictions.append(1 if np.mean(votes) > 0.5 else 0)
+        return np.array(predictions)
+    
+    def predict_proba(self, X):
+        predictions = []
+        for x in X:
+            votes = []
+            for tree in self.trees:
+                if x[tree['feature']] <= tree['threshold']:
+                    votes.append(tree['left_pred'])
+                else:
+                    votes.append(tree['right_pred'])
+            prob_1 = np.mean(votes)
+            predictions.append([1-prob_1, prob_1])
+        return np.array(predictions)
+
+class SimpleLogisticRegression:
+    def __init__(self, learning_rate=0.01, max_iter=1000):
+        self.learning_rate = learning_rate
+        self.max_iter = max_iter
+        
+    def _sigmoid(self, z):
+        return 1 / (1 + np.exp(-np.clip(z, -250, 250)))
+    
+    def fit(self, X, y):
+        # Add bias term
+        X = np.column_stack([np.ones(X.shape[0]), X])
+        self.weights = np.random.normal(0, 0.01, X.shape[1])
+        
+        for _ in range(self.max_iter):
+            z = X.dot(self.weights)
+            predictions = self._sigmoid(z)
+            
+            # Convert y to numpy array if it's a pandas Series
+            y_array = y.values if hasattr(y, 'values') else y
+            
+            gradient = X.T.dot(predictions - y_array) / len(y_array)
+            self.weights -= self.learning_rate * gradient
+    
+    def predict(self, X):
+        X = np.column_stack([np.ones(X.shape[0]), X])
+        return (self._sigmoid(X.dot(self.weights)) > 0.5).astype(int)
+    
+    def predict_proba(self, X):
+        X = np.column_stack([np.ones(X.shape[0]), X])
+        prob_1 = self._sigmoid(X.dot(self.weights))
+        return np.column_stack([1-prob_1, prob_1])
+
+class SimpleKNN:
+    def __init__(self, k=5):
+        self.k = k
+    
+    def fit(self, X, y):
+        self.X_train = X
+        self.y_train = y.values if hasattr(y, 'values') else y
+    
+    def predict(self, X):
+        predictions = []
+        for x in X:
+            distances = np.sqrt(np.sum((self.X_train - x)**2, axis=1))
+            k_indices = np.argsort(distances)[:self.k]
+            k_nearest_labels = self.y_train[k_indices]
+            predictions.append(1 if np.mean(k_nearest_labels) > 0.5 else 0)
+        return np.array(predictions)
+    
+    def predict_proba(self, X):
+        predictions = []
+        for x in X:
+            distances = np.sqrt(np.sum((self.X_train - x)**2, axis=1))
+            k_indices = np.argsort(distances)[:self.k]
+            k_nearest_labels = self.y_train[k_indices]
+            prob_1 = np.mean(k_nearest_labels)
+            predictions.append([1-prob_1, prob_1])
+        return np.array(predictions)
+
+def standardize_data(X_train, X_test):
+    """Simple standardization"""
+    mean = np.mean(X_train, axis=0)
+    std = np.std(X_train, axis=0)
+    std = np.where(std == 0, 1, std)  # Avoid division by zero
+    
+    X_train_scaled = (X_train - mean) / std
+    X_test_scaled = (X_test - mean) / std
+    
+    return X_train_scaled, X_test_scaled, mean, std
+
+def train_test_split_simple(X, y, test_size=0.2, random_state=42):
+    """Simple train-test split"""
+    np.random.seed(random_state)
+    n_samples = len(X)
+    n_test = int(n_samples * test_size)
+    
+    indices = np.arange(n_samples)
+    np.random.shuffle(indices)
+    
+    test_indices = indices[:n_test]
+    train_indices = indices[n_test:]
+    
+    X_train = X.iloc[train_indices] if hasattr(X, 'iloc') else X[train_indices]
+    X_test = X.iloc[test_indices] if hasattr(X, 'iloc') else X[test_indices]
+    y_train = y.iloc[train_indices] if hasattr(y, 'iloc') else y[train_indices]
+    y_test = y.iloc[test_indices] if hasattr(y, 'iloc') else y[test_indices]
+    
+    return X_train, X_test, y_train, y_test
+
+def calculate_metrics(y_true, y_pred):
+    """Calculate basic classification metrics"""
+    y_true = y_true.values if hasattr(y_true, 'values') else y_true
+    
+    accuracy = np.mean(y_true == y_pred)
+    
+    # Confusion matrix elements
+    tp = np.sum((y_true == 1) & (y_pred == 1))
+    tn = np.sum((y_true == 0) & (y_pred == 0))
+    fp = np.sum((y_true == 0) & (y_pred == 1))
+    fn = np.sum((y_true == 1) & (y_pred == 0))
+    
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+    
+    return {
+        'accuracy': accuracy,
+        'precision': precision,
+        'recall': recall,
+        'f1': f1,
+        'confusion_matrix': np.array([[tn, fp], [fn, tp]])
+    }
 
 def main():
     # Header
@@ -315,23 +493,13 @@ def main():
                        color_continuous_scale='RdBu_r')
         st.plotly_chart(fig, use_container_width=True)
         
-        # Feature importance analysis
-        st.subheader("⭐ Feature Importance Analysis")
+        # Feature importance analysis using correlation with target
+        st.subheader("⭐ Feature Correlation with Target")
         
-        X = df.drop('Outcome', axis=1)
-        y = df['Outcome']
+        feature_corr = df.corr()['Outcome'].abs().sort_values(ascending=False)[1:]
         
-        # Quick Random Forest for feature importance
-        rf = RandomForestClassifier(n_estimators=100, random_state=42)
-        rf.fit(X, y)
-        
-        feature_importance = pd.DataFrame({
-            'Feature': X.columns,
-            'Importance': rf.feature_importances_
-        }).sort_values('Importance', ascending=False)
-        
-        fig = px.bar(feature_importance, x='Importance', y='Feature', 
-                    orientation='h', title="Feature Importance (Random Forest)")
+        fig = px.bar(x=feature_corr.values, y=feature_corr.index, 
+                    orientation='h', title="Feature Correlation with Diabetes Outcome")
         st.plotly_chart(fig, use_container_width=True)
     
     # Section 4: Data Preprocessing
@@ -356,8 +524,8 @@ def main():
         
         # Show preprocessing steps
         preprocessing_steps = [
-            "✅ Handle missing values (replace zeros with NaN where medically impossible)",
-            "✅ Feature scaling using StandardScaler",
+            "✅ Handle missing values (replace zeros with median where medically impossible)",
+            "✅ Feature scaling using standardization",
             "✅ Train-test split (80-20)",
             "✅ Handle class imbalance awareness",
         ]
@@ -368,14 +536,12 @@ def main():
         # Preprocessing implementation
         df_processed = df.copy()
         
-        # Replace zeros with NaN for certain features
+        # Replace zeros with median for certain features
         zero_not_accepted = ['Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI']
         
         for feature in zero_not_accepted:
-            df_processed[feature] = df_processed[feature].replace(0, np.nan)
-        
-        # Fill NaN with median
-        df_processed = df_processed.fillna(df_processed.median())
+            median_val = df_processed[df_processed[feature] != 0][feature].median()
+            df_processed[feature] = df_processed[feature].replace(0, median_val)
         
         st.subheader("📊 Before vs After Preprocessing")
         
@@ -393,12 +559,10 @@ def main():
         X = df_processed.drop('Outcome', axis=1)
         y = df_processed['Outcome']
         
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+        X_train, X_test, y_train, y_test = train_test_split_simple(X, y, test_size=0.2, random_state=42)
         
         # Feature scaling
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        X_test_scaled = scaler.transform(X_test)
+        X_train_scaled, X_test_scaled, scaler_mean, scaler_std = standardize_data(X_train.values, X_test.values)
         
         st.subheader("📏 Feature Scaling")
         
@@ -418,9 +582,12 @@ def main():
             'X_test': X_test_scaled,
             'y_train': y_train,
             'y_test': y_test,
-            'scaler': scaler,
+            'scaler_mean': scaler_mean,
+            'scaler_std': scaler_std,
             'feature_names': X.columns.tolist()
         }
+        
+        st.success("✅ Data preprocessing completed and stored!")
     
     # Section 5: Model Training
     elif selected_section == "5. Model Training":
@@ -436,13 +603,9 @@ def main():
         st.subheader("📋 Model Selection")
         
         models = {
-            'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42),
-            'Logistic Regression': LogisticRegression(random_state=42),
-            'SVM': SVC(probability=True, random_state=42),
-            'K-Nearest Neighbors': KNeighborsClassifier(),
-            'Naive Bayes': GaussianNB(),
-            'Decision Tree': DecisionTreeClassifier(random_state=42),
-            'AdaBoost': AdaBoostClassifier(random_state=42)
+            'Random Forest': SimpleRandomForest(n_estimators=20),
+            'Logistic Regression': SimpleLogisticRegression(),
+            'K-Nearest Neighbors': SimpleKNN(k=5)
         }
         
         if st.button("🚀 Train All Models"):
@@ -464,14 +627,18 @@ def main():
                 y_pred_proba = model.predict_proba(X_test)[:, 1] if hasattr(model, 'predict_proba') else None
                 
                 # Calculate metrics
-                accuracy = accuracy_score(y_test, y_pred)
+                metrics = calculate_metrics(y_test, y_pred)
                 
                 model_results[name] = {
                     'model': model,
-                    'accuracy': accuracy,
+                    'accuracy': metrics['accuracy'],
+                    'precision': metrics['precision'],
+                    'recall': metrics['recall'],
+                    'f1': metrics['f1'],
                     'predictions': y_pred,
                     'probabilities': y_pred_proba,
-                    'training_time': training_time
+                    'training_time': training_time,
+                    'confusion_matrix': metrics['confusion_matrix']
                 }
                 
                 progress_bar.progress((i + 1) / len(models))
@@ -488,9 +655,13 @@ def main():
             results_df = pd.DataFrame({
                 'Model': list(model_results.keys()),
                 'Accuracy': [results['accuracy'] for results in model_results.values()],
+                'Precision': [results['precision'] for results in model_results.values()],
+                'Recall': [results['recall'] for results in model_results.values()],
+                'F1-Score': [results['f1'] for results in model_results.values()],
                 'Training Time (s)': [results['training_time'] for results in model_results.values()]
-            }).sort_values('Accuracy', ascending=False)
+            }).round(3)
             
+            results_df = results_df.sort_values('Accuracy', ascending=False)
             st.dataframe(results_df, use_container_width=True, hide_index=True)
             
             # Accuracy comparison chart
@@ -500,23 +671,8 @@ def main():
                         color_continuous_scale='viridis')
             fig.update_layout(xaxis_tickangle=-45)
             st.plotly_chart(fig, use_container_width=True)
-        
-        # Model details
-        if 'model_results' in st.session_state:
-            st.subheader("🔍 Model Details")
             
-            selected_model = st.selectbox("Select Model for Details:", 
-                                        list(st.session_state['model_results'].keys()))
-            
-            model_info = st.session_state['model_results'][selected_model]
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Accuracy", f"{model_info['accuracy']:.3f}")
-            with col2:
-                st.metric("Training Time", f"{model_info['training_time']:.2f}s")
-            with col3:
-                st.metric("Model Type", selected_model)
+            st.success("✅ Model training completed!")
     
     # Section 6: Results & Predictions
     elif selected_section == "6. Results & Predictions":
@@ -546,151 +702,3 @@ def main():
         selected_model_name = st.selectbox("Select Model:", list(st.session_state['model_results'].keys()))
         
         if st.button("🔮 Make Prediction"):
-            # Prepare input data
-            input_data = np.array([[pregnancies, glucose, blood_pressure, skin_thickness, 
-                                  insulin, bmi, pedigree, age]])
-            
-            # Scale the input data
-            scaler = st.session_state['processed_data']['scaler']
-            input_scaled = scaler.transform(input_data)
-            
-            # Make prediction
-            selected_model = st.session_state['model_results'][selected_model_name]['model']
-            prediction = selected_model.predict(input_scaled)[0]
-            
-            if hasattr(selected_model, 'predict_proba'):
-                probability = selected_model.predict_proba(input_scaled)[0]
-                prob_no_diabetes = probability[0]
-                prob_diabetes = probability[1]
-            else:
-                prob_diabetes = 0.5 if prediction == 1 else 0.5
-                prob_no_diabetes = 1 - prob_diabetes
-            
-            # Display results
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                if prediction == 1:
-                    st.error("⚠️ High Risk of Diabetes")
-                else:
-                    st.success("✅ Low Risk of Diabetes")
-            
-            with col2:
-                st.metric("Diabetes Probability", f"{prob_diabetes:.1%}")
-            
-            with col3:
-                st.metric("Model Used", selected_model_name)
-            
-            # Probability gauge
-            fig = go.Figure(go.Indicator(
-                mode = "gauge+number",
-                value = prob_diabetes * 100,
-                domain = {'x': [0, 1], 'y': [0, 1]},
-                title = {'text': "Diabetes Risk %"},
-                gauge = {
-                    'axis': {'range': [None, 100]},
-                    'bar': {'color': "darkblue"},
-                    'steps': [
-                        {'range': [0, 25], 'color': "lightgray"},
-                        {'range': [25, 50], 'color': "yellow"},
-                        {'range': [50, 100], 'color': "red"}],
-                    'threshold': {
-                        'line': {'color': "red", 'width': 4},
-                        'thickness': 0.75,
-                        'value': 50}}))
-            
-            fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True)
-    
-    # Section 7: Evaluation Metrics
-    elif selected_section == "7. Evaluation Metrics":
-        st.markdown('<div class="section-header"><h2>📏 Evaluation Metrics</h2></div>', unsafe_allow_html=True)
-        
-        if 'model_results' not in st.session_state:
-            st.warning("Please run the Model Training section first!")
-            return
-        
-        model_results = st.session_state['model_results']
-        y_test = st.session_state['processed_data']['y_test']
-        
-        selected_model = st.selectbox("Select Model for Detailed Analysis:", 
-                                    list(model_results.keys()))
-        
-        model_info = model_results[selected_model]
-        y_pred = model_info['predictions']
-        y_pred_proba = model_info['probabilities']
-        
-        # Classification Report
-        st.subheader("📊 Classification Report")
-        
-        report = classification_report(y_test, y_pred, output_dict=True)
-        report_df = pd.DataFrame(report).transpose()
-        st.dataframe(report_df.round(3), use_container_width=True)
-        
-        # Confusion Matrix
-        st.subheader("🔀 Confusion Matrix")
-        
-        cm = confusion_matrix(y_test, y_pred)
-        
-        fig = px.imshow(cm, 
-                       text_auto=True, 
-                       aspect="auto",
-                       title="Confusion Matrix",
-                       labels=dict(x="Predicted", y="Actual"),
-                       x=['No Diabetes', 'Diabetes'],
-                       y=['No Diabetes', 'Diabetes'])
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # ROC Curve
-        if y_pred_proba is not None:
-            st.subheader("📈 ROC Curve")
-            
-            fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
-            roc_auc = auc(fpr, tpr)
-            
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=fpr, y=tpr, name=f'ROC Curve (AUC = {roc_auc:.2f})'))
-            fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines', name='Random Classifier', line=dict(dash='dash')))
-            fig.update_layout(
-                title='Receiver Operating Characteristic (ROC) Curve',
-                xaxis_title='False Positive Rate',
-                yaxis_title='True Positive Rate'
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        
-        # Model Comparison Summary
-        st.subheader("📋 Model Comparison Summary")
-        
-        comparison_data = []
-        for name, results in model_results.items():
-            y_pred_model = results['predictions']
-            report_model = classification_report(y_test, y_pred_model, output_dict=True)
-            
-            comparison_data.append({
-                'Model': name,
-                'Accuracy': results['accuracy'],
-                'Precision': report_model['1']['precision'],
-                'Recall': report_model['1']['recall'],
-                'F1-Score': report_model['1']['f1-score'],
-                'Training Time': results['training_time']
-            })
-        
-        comparison_df = pd.DataFrame(comparison_data).round(3)
-        comparison_df = comparison_df.sort_values('Accuracy', ascending=False)
-        
-        st.dataframe(comparison_df, use_container_width=True, hide_index=True)
-        
-        # Best model recommendation
-        best_model = comparison_df.iloc[0]['Model']
-        st.success(f"🏆 Best Performing Model: **{best_model}** with {comparison_df.iloc[0]['Accuracy']:.1%} accuracy")
-    
-    # Footer
-    st.markdown("---")
-    st.markdown("""
-    <div class="warning-box">
-        <strong>⚠️ Medical Disclaimer:</strong> This tool is for educational purposes only and should not replace professional medical advice. Please consult with a healthcare provider for proper diagnosis and treatment.
-    </div>
-    """, unsafe_allow_html=True)
-
-if __name__ == "__main__":
-    main()
