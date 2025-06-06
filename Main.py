@@ -702,3 +702,250 @@ def main():
         selected_model_name = st.selectbox("Select Model:", list(st.session_state['model_results'].keys()))
         
         if st.button("🔮 Make Prediction"):
+            # Prepare input data
+            input_data = np.array([[pregnancies, glucose, blood_pressure, skin_thickness, 
+                                  insulin, bmi, pedigree, age]])
+            
+            # Scale the input data using stored scaler parameters
+            data = st.session_state['processed_data']
+            input_scaled = (input_data - data['scaler_mean']) / data['scaler_std']
+            
+            # Get selected model
+            selected_model = st.session_state['model_results'][selected_model_name]['model']
+            
+            # Make prediction
+            prediction = selected_model.predict(input_scaled)[0]
+            if hasattr(selected_model, 'predict_proba'):
+                probability = selected_model.predict_proba(input_scaled)[0]
+                prob_diabetes = probability[1]
+            else:
+                prob_diabetes = prediction
+            
+            # Display results
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                if prediction == 1:
+                    st.markdown("""
+                    <div style="background: #ffe6e6; padding: 20px; border-radius: 10px; border-left: 5px solid #ff6b6b;">
+                        <h3 style="color: #d63031; margin: 0;">⚠️ High Risk</h3>
+                        <p style="margin: 5px 0 0 0;">Diabetes risk detected</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown("""
+                    <div style="background: #e8f5e8; padding: 20px; border-radius: 10px; border-left: 5px solid #00b894;">
+                        <h3 style="color: #00b894; margin: 0;">✅ Low Risk</h3>
+                        <p style="margin: 5px 0 0 0;">No diabetes risk detected</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            with col2:
+                st.metric("Diabetes Probability", f"{prob_diabetes:.1%}")
+                st.metric("Model Used", selected_model_name)
+            
+            with col3:
+                # Risk gauge
+                fig = go.Figure(go.Indicator(
+                    mode = "gauge+number",
+                    value = prob_diabetes * 100,
+                    domain = {'x': [0, 1], 'y': [0, 1]},
+                    title = {'text': "Risk Level"},
+                    gauge = {
+                        'axis': {'range': [None, 100]},
+                        'bar': {'color': "#ff6b6b" if prob_diabetes > 0.5 else "#00b894"},
+                        'steps': [
+                            {'range': [0, 50], 'color': "#e8f5e8"},
+                            {'range': [50, 100], 'color': "#ffe6e6"}
+                        ],
+                        'threshold': {
+                            'line': {'color': "red", 'width': 4},
+                            'thickness': 0.75,
+                            'value': 50
+                        }
+                    }
+                ))
+                fig.update_layout(height=250)
+                st.plotly_chart(fig, use_container_width=True)
+        
+        st.subheader("📈 Model Performance Visualization")
+        
+        if 'model_results' in st.session_state:
+            model_results = st.session_state['model_results']
+            
+            # Performance metrics comparison
+            metrics_data = []
+            for model_name, results in model_results.items():
+                metrics_data.extend([
+                    {'Model': model_name, 'Metric': 'Accuracy', 'Value': results['accuracy']},
+                    {'Model': model_name, 'Metric': 'Precision', 'Value': results['precision']},
+                    {'Model': model_name, 'Metric': 'Recall', 'Value': results['recall']},
+                    {'Model': model_name, 'Metric': 'F1-Score', 'Value': results['f1']}
+                ])
+            
+            metrics_df = pd.DataFrame(metrics_data)
+            
+            fig = px.bar(metrics_df, x='Model', y='Value', color='Metric', 
+                        title="Model Performance Metrics Comparison",
+                        barmode='group')
+            fig.update_layout(xaxis_tickangle=-45)
+            st.plotly_chart(fig, use_container_width=True)
+    
+    # Section 7: Evaluation Metrics
+    elif selected_section == "7. Evaluation Metrics":
+        st.markdown('<div class="section-header"><h2>📊 Evaluation Metrics</h2></div>', unsafe_allow_html=True)
+        
+        if 'model_results' not in st.session_state:
+            st.warning("Please run the Model Training section first!")
+            return
+        
+        model_results = st.session_state['model_results']
+        
+        # Model selection for detailed analysis
+        selected_model = st.selectbox("Select Model for Detailed Analysis:", 
+                                    list(model_results.keys()))
+        
+        results = model_results[selected_model]
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("🎯 Classification Metrics")
+            
+            metrics_display = pd.DataFrame({
+                'Metric': ['Accuracy', 'Precision', 'Recall', 'F1-Score'],
+                'Value': [
+                    f"{results['accuracy']:.3f}",
+                    f"{results['precision']:.3f}",
+                    f"{results['recall']:.3f}",
+                    f"{results['f1']:.3f}"
+                ],
+                'Description': [
+                    'Overall correct predictions',
+                    'True positives / (True positives + False positives)',
+                    'True positives / (True positives + False negatives)',
+                    'Harmonic mean of Precision and Recall'
+                ]
+            })
+            
+            st.dataframe(metrics_display, use_container_width=True, hide_index=True)
+            
+            # Confusion Matrix
+            st.subheader("🔄 Confusion Matrix")
+            
+            cm = results['confusion_matrix']
+            
+            fig = px.imshow(cm, 
+                           text_auto=True,
+                           aspect="auto",
+                           color_continuous_scale='Blues',
+                           title=f"Confusion Matrix - {selected_model}")
+            
+            fig.update_xaxes(title="Predicted")
+            fig.update_yaxes(title="Actual")
+            fig.update_layout(
+                xaxis=dict(tickmode='array', tickvals=[0, 1], ticktext=['No Diabetes', 'Diabetes']),
+                yaxis=dict(tickmode='array', tickvals=[0, 1], ticktext=['No Diabetes', 'Diabetes'])
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            st.subheader("📋 Model Summary")
+            
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4>{selected_model}</h4>
+                <p><strong>Training Time:</strong> {results['training_time']:.3f} seconds</p>
+                <p><strong>Test Accuracy:</strong> {results['accuracy']:.1%}</p>
+                <p><strong>True Positives:</strong> {cm[1,1]}</p>
+                <p><strong>True Negatives:</strong> {cm[0,0]}</p>
+                <p><strong>False Positives:</strong> {cm[0,1]}</p>
+                <p><strong>False Negatives:</strong> {cm[1,0]}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Model interpretation
+            st.subheader("🧠 Model Insights")
+            
+            if selected_model == "Random Forest":
+                st.markdown("""
+                **Random Forest Insights:**
+                - Ensemble method using multiple decision trees
+                - Good at handling feature interactions
+                - Provides feature importance rankings
+                - Robust against overfitting
+                """)
+            elif selected_model == "Logistic Regression":
+                st.markdown("""
+                **Logistic Regression Insights:**
+                - Linear relationship between features and log-odds
+                - Provides probability estimates
+                - Interpretable coefficients
+                - Good baseline model
+                """)
+            elif selected_model == "K-Nearest Neighbors":
+                st.markdown("""
+                **K-Nearest Neighbors Insights:**
+                - Instance-based learning
+                - Non-parametric approach
+                - Sensitive to feature scaling
+                - Good for local patterns
+                """)
+        
+        # Model comparison summary
+        st.subheader("🏆 Overall Model Comparison")
+        
+        comparison_data = []
+        for model_name, results in model_results.items():
+            comparison_data.append({
+                'Model': model_name,
+                'Accuracy': f"{results['accuracy']:.3f}",
+                'Precision': f"{results['precision']:.3f}",
+                'Recall': f"{results['recall']:.3f}",
+                'F1-Score': f"{results['f1']:.3f}",
+                'Training Time': f"{results['training_time']:.3f}s"
+            })
+        
+        comparison_df = pd.DataFrame(comparison_data)
+        st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+        
+        # Best model recommendation
+        best_model = max(model_results.keys(), key=lambda x: model_results[x]['f1'])
+        
+        st.markdown(f"""
+        <div class="info-box">
+        <strong>🎯 Recommended Model:</strong> {best_model}<br>
+        Based on F1-Score: {model_results[best_model]['f1']:.3f}<br>
+        <em>F1-Score provides a balanced measure considering both precision and recall.</em>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Clinical considerations
+        st.subheader("🏥 Clinical Considerations")
+        
+        st.markdown("""
+        <div class="warning-box">
+        <strong>⚠️ Important Medical Disclaimer:</strong><br>
+        This model is for educational purposes only and should not be used for actual medical diagnosis. 
+        Always consult healthcare professionals for medical advice.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("""
+        **Model Selection for Healthcare:**
+        
+        - **High Recall Priority:** Choose models with high recall to minimize false negatives (missing diabetes cases)
+        - **High Precision Priority:** Choose models with high precision to minimize false positives (unnecessary worry/treatment)
+        - **Balanced Approach:** F1-Score provides a good balance between precision and recall
+        
+        **Next Steps for Production:**
+        1. Validate with larger, more diverse datasets
+        2. Clinical validation studies
+        3. Regulatory approval processes
+        4. Integration with electronic health records
+        5. Continuous monitoring and model updates
+        """)
+
+if __name__ == "__main__":
+    main()
